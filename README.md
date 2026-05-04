@@ -464,7 +464,55 @@ Important: Minikube is still local Kubernetes. It is good for demonstrating Kube
 
 ## AWS Public Deployment
 
-AWS EKS deployment is prepared through:
+The app image is already published to AWS ECR:
+
+```text
+178076227333.dkr.ecr.us-east-1.amazonaws.com/feastops-food-delivery-api:latest
+```
+
+That means the application can be deployed to AWS without copying the source code. The fastest public AWS deployment path is EC2: one Amazon Linux instance pulls the ECR image and runs the FeastOps container on public port `80`.
+
+### AWS EC2 Deployment
+
+Check whether the current AWS user can deploy EC2:
+
+```powershell
+.\scripts\aws-ec2-readiness.cmd -AwsRegion us-east-1
+```
+
+Deploy the ECR image to a public EC2 instance:
+
+```powershell
+.\scripts\deploy-aws-ec2.cmd -AwsRegion us-east-1 -ImageTag latest
+```
+
+The EC2 script:
+
+1. Verifies the ECR image exists.
+2. Creates or reuses an EC2 instance role with ECR read access.
+3. Finds the default VPC and subnet.
+4. Creates or reuses a security group allowing public HTTP port `80`.
+5. Launches an Amazon Linux 2023 EC2 instance.
+6. Installs Docker on the instance.
+7. Pulls the ECR image.
+8. Runs `feastops-food-delivery-api` as a restartable Docker container.
+9. Prints the public EC2 URL.
+
+Required EC2 deployment permissions are documented in:
+
+```text
+docs/aws-ec2-permissions.json
+```
+
+Current IAM blocker: the configured user can authenticate to AWS and read/push ECR, but it cannot run basic EC2 commands such as `ec2:DescribeRegions` or `ec2:DescribeVpcs`. Attach `docs/aws-ec2-permissions.json` to the IAM user/role, or switch to a profile with equivalent EC2/IAM/SSM permissions, then rerun:
+
+```powershell
+.\scripts\deploy-aws-ec2.cmd -AwsRegion us-east-1 -ImageTag latest
+```
+
+### AWS EKS Deployment
+
+AWS EKS deployment is also prepared through:
 
 ```powershell
 .\scripts\aws-readiness.cmd -AwsRegion us-east-1
@@ -491,20 +539,15 @@ The AWS script:
 6. Uses a public AWS `LoadBalancer` service.
 7. Prints the public AWS hostname when it becomes available.
 
-Current AWS image:
-
-```text
-178076227333.dkr.ecr.us-east-1.amazonaws.com/feastops-food-delivery-api:latest
-```
-
 Current AWS status:
 
 - ECR repository exists.
 - ECR `latest` image exists.
 - AWS CLI can authenticate as the configured IAM user.
+- EC2 deployment is blocked until the IAM principal has EC2, SSM, and instance-profile permissions.
 - EKS deployment is blocked until the IAM principal has EKS access and an EKS cluster exists.
 
-The required AWS permission template for this demo is documented in:
+The required EKS permission template for this demo is documented in:
 
 ```text
 docs/aws-eks-permissions.json
@@ -526,8 +569,9 @@ This creates a temporary Cloudflare quick tunnel from the internet to `http://lo
 
 Cloud deployment status:
 
+- AWS EC2 deployment scripts are included and ready.
 - AWS EKS manifests and deployment scripts are included.
-- A real AWS deployment requires AWS CLI login, EKS access, and ECR permissions.
+- A real AWS deployment requires AWS CLI login plus EC2/EKS permissions.
 - Without AWS/GCP/Azure credentials on this machine, the available public path is the Cloudflare quick tunnel over the Kubernetes service.
 
 ## GitHub Actions
