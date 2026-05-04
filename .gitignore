@@ -9,4 +9,5 @@ app@tmp/
 .env
 .DS_Store
 *.log
+aws-console-output.*
 tools/
