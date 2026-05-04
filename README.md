@@ -7,6 +7,7 @@ It demonstrates a full local DevOps flow:
 - Docker Compose runs the complete environment
 - The application is packaged as one reusable Docker image
 - The application image can be pushed to Docker Hub, GHCR, ECR, or another registry
+- GitHub Actions validates the app and publishes the app image to GHCR
 - Jenkins automates CI stages
 - Jest generates test coverage
 - SonarQube analyzes real JavaScript code and imports coverage
@@ -270,6 +271,19 @@ Do not pack those tools into the app image. A production-style setup keeps the a
 
 To make the app runnable without the source code, publish the app image to a registry.
 
+This repository includes GitHub Actions that publish the app image to GitHub Container Registry:
+
+```text
+ghcr.io/aniruddhiyer43782/feastops-food-delivery-api:latest
+```
+
+After the `Publish App Image` workflow succeeds, anyone with package access can run:
+
+```powershell
+docker pull ghcr.io/aniruddhiyer43782/feastops-food-delivery-api:latest
+docker run --rm -p 3100:3000 ghcr.io/aniruddhiyer43782/feastops-food-delivery-api:latest
+```
+
 Example for Docker Hub:
 
 ```powershell
@@ -397,7 +411,7 @@ kubectl -n feastops get hpa
 Deploy Kubernetes directly from a registry image:
 
 ```powershell
-.\scripts\deploy-registry-image.cmd -RegistryImage docker.io/<your-dockerhub-user>/feastops-food-delivery-api:latest
+.\scripts\deploy-registry-image.cmd -RegistryImage ghcr.io/aniruddhiyer43782/feastops-food-delivery-api:latest
 ```
 
 This proves the Kubernetes deployment does not depend on local source code once the image is in a registry.
@@ -438,6 +452,21 @@ Temporary public demo without AWS:
 ```
 
 This creates a temporary Cloudflare quick tunnel from the internet to `http://localhost:31080`. It is useful for demos, but it is not production hosting.
+
+Cloud deployment status:
+
+- AWS EKS manifests and deployment scripts are included.
+- A real AWS deployment requires AWS CLI login, EKS access, and ECR permissions.
+- Without AWS/GCP/Azure credentials on this machine, the available public path is the Cloudflare quick tunnel over the Kubernetes service.
+
+## GitHub Actions
+
+Two workflows are included:
+
+- `CI`: installs dependencies, lints, tests with coverage, audits production dependencies, builds the Docker image, smoke-tests the image, and renders Kubernetes manifests.
+- `Publish App Image`: builds and publishes the app image to GHCR on pushes to `main`.
+
+The registry image is separate from the DevOps infrastructure. Jenkins, SonarQube, Prometheus, Grafana, and PostgreSQL remain independent infrastructure containers.
 
 ## Grafana Dashboard
 

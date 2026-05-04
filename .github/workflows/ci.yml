@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  app:
+    name: App checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install dependencies
+        working-directory: app
+        run: npm ci
+
+      - name: Lint
+        working-directory: app
+        run: npm run lint
+
+      - name: Test with coverage
+        working-directory: app
+        run: npm test -- --coverage --forceExit
+
+      - name: Production dependency audit
+        working-directory: app
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Build Docker image
+        run: docker build -t feastops-food-delivery-api:ci app
+
+      - name: Smoke test Docker image
+        run: |
+          docker run -d --name feastops-ci -p 3100:3000 feastops-food-delivery-api:ci
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://localhost:3100/health; then
+              docker rm -f feastops-ci
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs feastops-ci
+          docker rm -f feastops-ci
+          exit 1
+
+  kubernetes:
+    name: Kubernetes manifests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Render local Kubernetes manifests
+        run: kubectl kustomize k8s
+
+      - name: Render AWS Kubernetes manifests
+        run: kubectl kustomize k8s/aws
