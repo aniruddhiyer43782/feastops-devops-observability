@@ -2,30 +2,48 @@ pipeline {
   agent any
 
   parameters {
-    string(name: 'REGISTRY_IMAGE', defaultValue: '', description: 'Optional full registry image, for example docker.io/yourname/feastops-food-delivery-api:latest')
-    booleanParam(name: 'PUSH_IMAGE', defaultValue: false, description: 'Push REGISTRY_IMAGE after build and smoke test. Requires Docker login/credentials on the Jenkins agent.')
+    string(name: 'REGISTRY_IMAGE', defaultValue: 'ghcr.io/aniruddhiyer43782/feastops-food-delivery-api:jenkins', description: 'Full registry image pushed after tests, Quality Gate, and image smoke test')
+    string(name: 'REGISTRY_CREDENTIALS_ID', defaultValue: 'registry-credentials', description: 'Jenkins username/password credential used for docker login')
+    booleanParam(name: 'PUSH_IMAGE', defaultValue: true, description: 'Push REGISTRY_IMAGE after build, tests, SonarQube Quality Gate, and image smoke test')
+  }
+
+  triggers {
+    githubPush()
   }
 
   environment {
     PROJECT_DIR = '/workspace/feastops'
     APP_DIR = '/workspace/feastops/app'
+    CI_ROOT = "/tmp/feastops-ci-${BUILD_NUMBER}"
+    CI_APP_DIR = "/tmp/feastops-ci-${BUILD_NUMBER}/app"
     IMAGE_NAME = 'feastops-food-delivery-api'
     SONAR_HOST_URL = 'http://sonarqube:9000'
     SONAR_WORK_DIR = "/tmp/sonar-feastops-${BUILD_NUMBER}"
   }
 
   stages {
+    stage('Prepare CI Workspace') {
+      steps {
+        sh '''
+          rm -rf "$CI_ROOT"
+          mkdir -p "$CI_APP_DIR"
+          cp "$APP_DIR/package.json" "$APP_DIR/package-lock.json" "$APP_DIR/sonar-project.properties" "$APP_DIR/eslint.config.js" "$APP_DIR/Dockerfile" "$CI_APP_DIR/"
+          cp -R "$APP_DIR/src" "$APP_DIR/public" "$APP_DIR/test" "$APP_DIR/scripts" "$CI_APP_DIR/"
+        '''
+      }
+    }
+
     stage('Install Dependencies') {
       steps {
-        dir(env.APP_DIR) {
-          sh 'npm install'
+        dir(env.CI_APP_DIR) {
+          sh 'npm ci --cache /tmp/npm-cache-feastops'
         }
       }
     }
 
     stage('Lint') {
       steps {
-        dir(env.APP_DIR) {
+        dir(env.CI_APP_DIR) {
           sh 'npm run lint'
         }
       }
@@ -33,7 +51,7 @@ pipeline {
 
     stage('Dependency Audit') {
       steps {
-        dir(env.APP_DIR) {
+        dir(env.CI_APP_DIR) {
           sh '''
             npm audit --omit=dev --audit-level=high || {
               echo "Dependency audit could not complete or found high production dependency risk."
@@ -46,13 +64,12 @@ pipeline {
 
     stage('Test') {
       steps {
-        dir(env.APP_DIR) {
-          sh 'npm test -- --coverage --forceExit'
-        }
-      }
-      post {
-        always {
-          junit allowEmptyResults: true, testResults: 'app/reports/junit.xml'
+        dir(env.CI_APP_DIR) {
+          sh '''
+            npm test -- --coverage --forceExit
+            rm -rf "$APP_DIR/coverage" "$APP_DIR/reports"
+            cp -R coverage reports "$APP_DIR/"
+          '''
         }
       }
     }
@@ -65,7 +82,7 @@ pipeline {
 
     stage('SonarQube Scan') {
       steps {
-        dir(env.APP_DIR) {
+        dir(env.CI_APP_DIR) {
           withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
             sh '''
               rm -rf "$SONAR_WORK_DIR"
@@ -81,7 +98,7 @@ pipeline {
 
     stage('Quality Gate') {
       steps {
-        dir(env.APP_DIR) {
+        dir(env.CI_APP_DIR) {
           withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
             sh 'node scripts/check-sonar-quality-gate.js "$SONAR_WORK_DIR/report-task.txt"'
           }
@@ -126,10 +143,21 @@ pipeline {
         }
       }
       steps {
-        sh '''
-          docker tag "$IMAGE_NAME:$BUILD_NUMBER" "$REGISTRY_IMAGE"
-          docker push "$REGISTRY_IMAGE"
-        '''
+        withCredentials([usernamePassword(credentialsId: "${params.REGISTRY_CREDENTIALS_ID}", usernameVariable: 'REGISTRY_USERNAME', passwordVariable: 'REGISTRY_PASSWORD')]) {
+          sh '''
+            registry_host="$(echo "$REGISTRY_IMAGE" | awk -F/ '{print $1}')"
+            case "$registry_host" in
+              *.*|*:*) ;;
+              *) registry_host="docker.io" ;;
+            esac
+
+            echo "$REGISTRY_PASSWORD" | docker login "$registry_host" --username "$REGISTRY_USERNAME" --password-stdin
+            docker tag "$IMAGE_NAME:$BUILD_NUMBER" "$REGISTRY_IMAGE"
+            docker push "$REGISTRY_IMAGE"
+            docker logout "$registry_host"
+            echo "Published $REGISTRY_IMAGE from $IMAGE_NAME:$BUILD_NUMBER"
+          '''
+        }
       }
     }
   }
@@ -140,6 +168,7 @@ pipeline {
         junit allowEmptyResults: true, testResults: 'reports/junit.xml'
         archiveArtifacts artifacts: 'coverage/**', allowEmptyArchive: true
       }
+      sh 'rm -rf "$CI_ROOT" "$SONAR_WORK_DIR" || true'
     }
   }
 }

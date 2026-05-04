@@ -22,6 +22,7 @@ RUN apt-get update \
 RUN jenkins-plugin-cli --plugins \
   workflow-aggregator \
   git \
+  github \
   junit \
   credentials \
   credentials-binding \

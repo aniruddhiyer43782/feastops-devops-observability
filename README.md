@@ -75,6 +75,7 @@ It runs:
 7. SonarQube Quality Gate check
 8. `docker build -t feastops-food-delivery-api:jenkins app`
 9. Docker image smoke test against the freshly built image
+10. Optional registry publish to GHCR/Docker Hub using Jenkins credentials
 
 The SonarQube stage scans the real application, frontend, and container definition using [app/sonar-project.properties](app/sonar-project.properties):
 
@@ -318,7 +319,50 @@ Jenkins is aligned with this model too:
 - it builds `feastops-food-delivery-api:<build-number>`
 - it tags `feastops-food-delivery-api:latest`
 - it smoke-tests the built image
-- it can optionally push `REGISTRY_IMAGE` when `PUSH_IMAGE=true`
+- it logs in with a Jenkins credential named `registry-credentials`
+- it pushes `REGISTRY_IMAGE` when `PUSH_IMAGE=true`
+
+Set the Jenkins registry credential:
+
+```powershell
+.\scripts\add-jenkins-registry-credential.cmd `
+  -RegistryUsername aniruddhiyer43782 `
+  -RegistryToken <github-or-docker-registry-token>
+```
+
+Run a Jenkins build that publishes the image:
+
+```powershell
+.\scripts\run-jenkins-registry-build.cmd `
+  -RegistryImage ghcr.io/aniruddhiyer43782/feastops-food-delivery-api:jenkins
+```
+
+Deploy Kubernetes from the pushed registry image:
+
+```powershell
+.\scripts\deploy-registry-image.cmd `
+  -RegistryImage ghcr.io/aniruddhiyer43782/feastops-food-delivery-api:jenkins
+```
+
+## Jenkins Webhook Auto-Builds
+
+The Jenkinsfile includes `githubPush()`, so Jenkins can auto-build when GitHub sends a push webhook.
+
+Because this Jenkins runs locally at `http://localhost:8081`, GitHub cannot reach it directly. For a demo, expose Jenkins with a temporary Cloudflare tunnel:
+
+```powershell
+.\scripts\expose-jenkins-webhook.cmd
+```
+
+Copy the printed payload URL ending in `/github-webhook/`, then create the GitHub webhook:
+
+```powershell
+.\scripts\create-github-webhook.cmd `
+  -WebhookUrl https://your-temporary-url.trycloudflare.com/github-webhook/ `
+  -ReplaceExisting
+```
+
+Now a push to GitHub can trigger Jenkins automatically. The tunnel container must stay running while webhook auto-builds are needed. A stable production setup would use a permanent Jenkins URL instead of a temporary tunnel.
 
 ## Kubernetes Deployment
 
@@ -541,6 +585,14 @@ These visualisations connect the product flow to observability: placing orders c
 |   |-- kubernetes-status.ps1
 |   |-- publish-app-image.cmd
 |   |-- publish-app-image.ps1
+|   |-- add-jenkins-registry-credential.cmd
+|   |-- add-jenkins-registry-credential.ps1
+|   |-- create-github-webhook.cmd
+|   |-- create-github-webhook.ps1
+|   |-- expose-jenkins-webhook.cmd
+|   |-- expose-jenkins-webhook.ps1
+|   |-- run-jenkins-registry-build.cmd
+|   |-- run-jenkins-registry-build.ps1
 |   |-- scale-kubernetes.cmd
 |   `-- scale-kubernetes.ps1
 |-- docker-compose.app-image.yml
