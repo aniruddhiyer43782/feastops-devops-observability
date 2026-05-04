@@ -12,8 +12,8 @@ pipeline {
   }
 
   environment {
-    PROJECT_DIR = '/workspace/feastops'
-    APP_DIR = '/workspace/feastops/app'
+    PROJECT_DIR = "${WORKSPACE}"
+    APP_DIR = "${WORKSPACE}/app"
     CI_ROOT = "/tmp/feastops-ci-${BUILD_NUMBER}"
     CI_APP_DIR = "/tmp/feastops-ci-${BUILD_NUMBER}/app"
     IMAGE_NAME = 'feastops-food-delivery-api'
