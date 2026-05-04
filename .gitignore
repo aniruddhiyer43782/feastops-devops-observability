@@ -1,0 +1,12 @@
+node_modules/
+.npm-cache/
+coverage/
+reports/
+.scannerwork/
+app@tmp/
+.k8s-port-forward.pid
+.minikube-port-forward.pid
+.env
+.DS_Store
+*.log
+tools/

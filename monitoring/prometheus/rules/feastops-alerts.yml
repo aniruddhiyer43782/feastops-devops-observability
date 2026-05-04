@@ -1,0 +1,29 @@
+groups:
+  - name: feastops.rules
+    rules:
+      - alert: FeastOpsAppDown
+        expr: up{job="devops-app"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "FeastOps app is not being scraped"
+          description: "Prometheus has not been able to scrape the FeastOps /metrics endpoint for at least 1 minute."
+
+      - alert: FeastOpsHighErrorRate
+        expr: sum(rate(feastops_http_request_duration_seconds_count{job="devops-app",status_code=~"5.."}[5m])) > 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "FeastOps is returning 5xx responses"
+          description: "The app has returned server errors during the last 5 minutes."
+
+      - alert: FeastOpsHighP95Latency
+        expr: histogram_quantile(0.95, sum(rate(feastops_http_request_duration_seconds_bucket{job="devops-app"}[5m])) by (le)) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "FeastOps p95 latency is high"
+          description: "The 95th percentile request latency is above 500 ms for 5 minutes."
