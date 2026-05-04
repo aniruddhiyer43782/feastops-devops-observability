@@ -467,7 +467,8 @@ Important: Minikube is still local Kubernetes. It is good for demonstrating Kube
 AWS EKS deployment is prepared through:
 
 ```powershell
-.\scripts\deploy-aws-eks.cmd -AwsRegion ap-south-1 -ClusterName feastops-eks
+.\scripts\aws-readiness.cmd -AwsRegion us-east-1
+.\scripts\deploy-aws-eks.cmd -AwsRegion us-east-1 -ClusterName feastops-eks -ImageTag latest
 ```
 
 This requires:
@@ -476,18 +477,44 @@ This requires:
 - Docker installed
 - `kubectl` installed
 - an existing EKS cluster named `feastops-eks`
-- permission to create/push to ECR
+- permission to read/push the ECR image
+- permission to access EKS and the Kubernetes API
 - permission to create a Kubernetes `LoadBalancer` service
 
 The AWS script:
 
 1. Checks AWS identity.
 2. Creates/uses an ECR repository.
-3. Builds and pushes the app image to ECR.
+3. Uses the existing ECR image tag if it is already present, or builds and pushes it if it is missing.
 4. Updates kubeconfig for EKS.
 5. Applies the AWS Kubernetes overlay from `k8s/aws`.
 6. Uses a public AWS `LoadBalancer` service.
 7. Prints the public AWS hostname when it becomes available.
+
+Current AWS image:
+
+```text
+178076227333.dkr.ecr.us-east-1.amazonaws.com/feastops-food-delivery-api:latest
+```
+
+Current AWS status:
+
+- ECR repository exists.
+- ECR `latest` image exists.
+- AWS CLI can authenticate as the configured IAM user.
+- EKS deployment is blocked until the IAM principal has EKS access and an EKS cluster exists.
+
+The required AWS permission template for this demo is documented in:
+
+```text
+docs/aws-eks-permissions.json
+```
+
+After EKS access is granted and the `feastops-eks` cluster exists, run:
+
+```powershell
+.\scripts\deploy-aws-eks.cmd -AwsRegion us-east-1 -ClusterName feastops-eks -ImageTag latest
+```
 
 Temporary public demo without AWS:
 
