@@ -15,6 +15,7 @@ It demonstrates a full local DevOps flow:
 - Grafana visualizes those metrics
 
 ## What The Project Does
+##intro
 
 The app models a Mumbai food delivery platform:
 
