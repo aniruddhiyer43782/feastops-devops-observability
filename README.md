@@ -472,6 +472,12 @@ The app image is already published to AWS ECR:
 
 That means the application can be deployed to AWS without copying the source code. The fastest public AWS deployment path is EC2: one Amazon Linux instance pulls the ECR image and runs the FeastOps container on public port `80`.
 
+There are now three AWS deployment levels:
+
+1. **Single EC2 app container**: simplest public app demo.
+2. **EC2 Auto Scaling Group**: production-shaped app deployment with multiple EC2 instances behind an Application Load Balancer and CPU target tracking.
+3. **EKS Kubernetes**: managed Kubernetes on AWS using the same registry image and `k8s/aws` manifests.
+
 ### AWS EC2 Deployment
 
 Check whether the current AWS user can deploy EC2:
@@ -509,6 +515,43 @@ Current IAM blocker: the configured user can authenticate to AWS and read/push E
 ```powershell
 .\scripts\deploy-aws-ec2.cmd -AwsRegion us-east-1 -ImageTag latest
 ```
+
+### AWS Auto Scaling Group Deployment
+
+The ASG path deploys the app image without source code, but with a proper AWS scaling shape:
+
+```text
+internet -> Application Load Balancer -> Auto Scaling Group -> EC2 app containers
+```
+
+Run it with the GHCR image:
+
+```powershell
+.\scripts\deploy-aws-asg.cmd `
+  -AwsRegion us-east-1 `
+  -AppImage ghcr.io/aniruddhiyer43782/feastops-food-delivery-api:latest `
+  -MinSize 2 `
+  -DesiredCapacity 2 `
+  -MaxSize 4 `
+  -CpuTarget 60
+```
+
+Check it with:
+
+```powershell
+.\scripts\aws-asg-status.cmd -AwsRegion us-east-1
+```
+
+This creates or reuses:
+
+- security group for public HTTP
+- Application Load Balancer
+- target group with `/health` checks
+- launch template
+- Auto Scaling Group
+- CPU target-tracking scaling policy
+
+Current IAM blocker: the configured AWS user is missing Auto Scaling and Elastic Load Balancing permissions. Attach `docs/aws-asg-eks-permissions.json` or switch to a profile with equivalent permissions, then rerun the ASG command.
 
 ### AWS EKS Deployment
 
@@ -551,6 +594,12 @@ The required EKS permission template for this demo is documented in:
 
 ```text
 docs/aws-eks-permissions.json
+```
+
+For a combined ASG + EKS permission template, use:
+
+```text
+docs/aws-asg-eks-permissions.json
 ```
 
 After EKS access is granted and the `feastops-eks` cluster exists, run:
