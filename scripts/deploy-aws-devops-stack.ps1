@@ -52,7 +52,7 @@ function Invoke-Aws {
   if ($process.ExitCode -ne 0) {
     throw "aws $($Arguments -join ' ') failed with exit code $($process.ExitCode)`n$output`n$errorText"
   }
-  if ($output.Trim()) { Write-Host $output.Trim() }
+  if ($output -and $output.Trim()) { Write-Host $output.Trim() }
   if ($errorText -and $errorText.Trim()) { Write-Host $errorText.Trim() }
 }
 
