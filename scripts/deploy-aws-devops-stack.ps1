@@ -164,9 +164,16 @@ exec > >(tee /var/log/feastops-devops-bootstrap.log|logger -t feastops-devops-bo
 
 echo "Starting FeastOps AWS DevOps stack bootstrap"
 dnf update -y
-dnf install -y docker git awscli
+dnf install -y docker git awscli docker-compose-plugin || dnf install -y docker git awscli
 systemctl enable --now docker
 usermod -aG docker ec2-user || true
+if ! docker compose version >/dev/null 2>&1; then
+  echo "Installing Docker Compose CLI plugin"
+  mkdir -p /usr/local/lib/docker/cli-plugins
+  curl -fsSL https://github.com/docker/compose/releases/download/v2.29.7/docker-compose-linux-x86_64 -o /usr/local/lib/docker/cli-plugins/docker-compose
+  chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+fi
+docker compose version
 sysctl -w vm.max_map_count=262144
 grep -q "vm.max_map_count" /etc/sysctl.conf || echo "vm.max_map_count=262144" >> /etc/sysctl.conf
 fallocate -l 2G /swapfile || true
