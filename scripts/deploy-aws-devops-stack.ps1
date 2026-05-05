@@ -33,7 +33,7 @@ function Invoke-AwsJson {
   $errorText = if (Test-Path $errorPath) { Get-Content -LiteralPath $errorPath -Raw } else { "" }
   Remove-Item -LiteralPath $errorPath -Force -ErrorAction SilentlyContinue
   if ($LASTEXITCODE -ne 0) { throw ($output -join "`n") }
-  if ($errorText.Trim()) { Write-Host $errorText.Trim() }
+  if ($errorText -and $errorText.Trim()) { Write-Host $errorText.Trim() }
   return $output | ConvertFrom-Json
 }
 
@@ -46,7 +46,7 @@ function Invoke-Aws {
   if ($LASTEXITCODE -ne 0) {
     throw "aws $($Arguments -join ' ') failed with exit code $LASTEXITCODE`n$errorText"
   }
-  if ($errorText.Trim()) { Write-Host $errorText.Trim() }
+  if ($errorText -and $errorText.Trim()) { Write-Host $errorText.Trim() }
 }
 
 function Allow-Port {
