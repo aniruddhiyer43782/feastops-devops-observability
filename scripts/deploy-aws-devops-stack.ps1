@@ -28,17 +28,25 @@ $Aws = Resolve-Tool "aws" @("C:\Program Files\Amazon\AWSCLIV2\aws.exe")
 
 function Invoke-AwsJson {
   param([string[]]$Arguments)
-  $output = & $Aws @Arguments 2>&1
+  $errorPath = Join-Path ([System.IO.Path]::GetTempPath()) "aws-error-$([guid]::NewGuid().ToString('N')).txt"
+  $output = & $Aws @Arguments 2> $errorPath
+  $errorText = if (Test-Path $errorPath) { Get-Content -LiteralPath $errorPath -Raw } else { "" }
+  Remove-Item -LiteralPath $errorPath -Force -ErrorAction SilentlyContinue
   if ($LASTEXITCODE -ne 0) { throw ($output -join "`n") }
+  if ($errorText.Trim()) { Write-Host $errorText.Trim() }
   return $output | ConvertFrom-Json
 }
 
 function Invoke-Aws {
   param([string[]]$Arguments)
-  & $Aws @Arguments
+  $errorPath = Join-Path ([System.IO.Path]::GetTempPath()) "aws-error-$([guid]::NewGuid().ToString('N')).txt"
+  & $Aws @Arguments 2> $errorPath
+  $errorText = if (Test-Path $errorPath) { Get-Content -LiteralPath $errorPath -Raw } else { "" }
+  Remove-Item -LiteralPath $errorPath -Force -ErrorAction SilentlyContinue
   if ($LASTEXITCODE -ne 0) {
-    throw "aws $($Arguments -join ' ') failed with exit code $LASTEXITCODE"
+    throw "aws $($Arguments -join ' ') failed with exit code $LASTEXITCODE`n$errorText"
   }
+  if ($errorText.Trim()) { Write-Host $errorText.Trim() }
 }
 
 function Allow-Port {
