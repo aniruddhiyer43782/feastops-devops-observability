@@ -2,6 +2,7 @@ param(
   [string]$AwsRegion = "us-east-1",
   [string]$RepositoryName = "feastops-food-delivery-api",
   [string]$ImageTag = "latest",
+  [string]$AppImage = "",
   [string]$InstanceType = "t3.medium",
   [string]$Name = "feastops-aws-devops-stack",
   [string]$GitRepoUrl = "https://github.com/aniruddhiyer43782/feastops-devops-observability.git",
@@ -49,7 +50,8 @@ function Allow-Port {
 $caller = Invoke-AwsJson @("sts", "get-caller-identity", "--output", "json")
 $accountId = $caller.Account
 $registry = "$accountId.dkr.ecr.$AwsRegion.amazonaws.com"
-$imageUri = "$registry/$RepositoryName`:$ImageTag"
+$imageUri = if ($AppImage) { $AppImage } else { "$registry/$RepositoryName`:$ImageTag" }
+$usesEcrImage = $imageUri.StartsWith("$registry/")
 
 Write-Host "FeastOps AWS DevOps stack deploy"
 Write-Host "================================"
@@ -58,7 +60,9 @@ Write-Host "AWS region:    $AwsRegion"
 Write-Host "ECR image:     $imageUri"
 Write-Host "Instance type: $InstanceType"
 
-Invoke-AwsJson @("ecr", "describe-images", "--region", $AwsRegion, "--repository-name", $RepositoryName, "--image-ids", "imageTag=$ImageTag", "--output", "json") | Out-Null
+if ($usesEcrImage) {
+  Invoke-AwsJson @("ecr", "describe-images", "--region", $AwsRegion, "--repository-name", $RepositoryName, "--image-ids", "imageTag=$ImageTag", "--output", "json") | Out-Null
+}
 
 $roleName = "feastops-ec2-ecr-role"
 $profileName = "feastops-ec2-instance-profile"
@@ -66,32 +70,34 @@ $assumeRolePolicy = '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Pri
 $instanceProfileArgs = @()
 $ecrLoginPassword = $null
 
-try {
+if ($usesEcrImage) {
   try {
-    Invoke-AwsJson @("iam", "get-role", "--role-name", $roleName, "--output", "json") | Out-Null
-    Write-Host "IAM role exists: $roleName"
-  } catch {
-    Write-Host "Creating IAM role: $roleName"
-    Invoke-Aws @("iam", "create-role", "--role-name", $roleName, "--assume-role-policy-document", $assumeRolePolicy)
-    Invoke-Aws @("iam", "attach-role-policy", "--role-name", $roleName, "--policy-arn", "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly")
-  }
+    try {
+      Invoke-AwsJson @("iam", "get-role", "--role-name", $roleName, "--output", "json") | Out-Null
+      Write-Host "IAM role exists: $roleName"
+    } catch {
+      Write-Host "Creating IAM role: $roleName"
+      Invoke-Aws @("iam", "create-role", "--role-name", $roleName, "--assume-role-policy-document", $assumeRolePolicy)
+      Invoke-Aws @("iam", "attach-role-policy", "--role-name", $roleName, "--policy-arn", "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly")
+    }
 
-  try {
-    Invoke-AwsJson @("iam", "get-instance-profile", "--instance-profile-name", $profileName, "--output", "json") | Out-Null
-    Write-Host "Instance profile exists: $profileName"
-  } catch {
-    Write-Host "Creating instance profile: $profileName"
-    Invoke-Aws @("iam", "create-instance-profile", "--instance-profile-name", $profileName)
-    Invoke-Aws @("iam", "add-role-to-instance-profile", "--instance-profile-name", $profileName, "--role-name", $roleName)
-    Start-Sleep -Seconds 20
-  }
+    try {
+      Invoke-AwsJson @("iam", "get-instance-profile", "--instance-profile-name", $profileName, "--output", "json") | Out-Null
+      Write-Host "Instance profile exists: $profileName"
+    } catch {
+      Write-Host "Creating instance profile: $profileName"
+      Invoke-Aws @("iam", "create-instance-profile", "--instance-profile-name", $profileName)
+      Invoke-Aws @("iam", "add-role-to-instance-profile", "--instance-profile-name", $profileName, "--role-name", $roleName)
+      Start-Sleep -Seconds 20
+    }
 
-  $instanceProfileArgs = @("--iam-instance-profile", "Name=$profileName")
-} catch {
-  Write-Host "IAM instance profile setup is blocked. Falling back to a short-lived ECR Docker login token in EC2 user-data."
-  $ecrLoginPassword = (& $Aws ecr get-login-password --region $AwsRegion)
-  if ($LASTEXITCODE -ne 0 -or -not $ecrLoginPassword) {
-    throw "Could not get ECR login password for fallback deployment."
+    $instanceProfileArgs = @("--iam-instance-profile", "Name=$profileName")
+  } catch {
+    Write-Host "IAM instance profile setup is blocked. Falling back to a short-lived ECR Docker login token in EC2 user-data."
+    $ecrLoginPassword = (& $Aws ecr get-login-password --region $AwsRegion)
+    if ($LASTEXITCODE -ne 0 -or -not $ecrLoginPassword) {
+      throw "Could not get ECR login password for fallback deployment."
+    }
   }
 }
 
@@ -130,7 +136,9 @@ try {
   }
 }
 
-if ($ecrLoginPassword) {
+if (-not $usesEcrImage) {
+  $loginCommand = "echo 'Using public registry image: $imageUri'"
+} elseif ($ecrLoginPassword) {
   $loginCommand = "echo '$ecrLoginPassword' | docker login --username AWS --password-stdin $registry"
 } else {
   $loginCommand = "aws ecr get-login-password --region $AwsRegion | docker login --username AWS --password-stdin $registry"
@@ -166,7 +174,7 @@ else
 fi
 cd /opt/feastops
 
-echo "Logging in to ECR"
+echo "Preparing registry access"
 $loginCommand
 docker pull $imageUri
 
