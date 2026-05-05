@@ -64,7 +64,11 @@ foreach ($target in $urls) {
     $response = Invoke-WebRequest -Uri $target.Url -UseBasicParsing -TimeoutSec 8
     Write-Host ("{0,-10} OK   {1}" -f $target.Name, $target.Url)
   } catch {
-    Write-Host ("{0,-10} WAIT {1}" -f $target.Name, $target.Url)
+    if ($_.Exception.Response -and $_.Exception.Response.StatusCode.value__ -eq 403) {
+      Write-Host ("{0,-10} OK   {1} (auth protected)" -f $target.Name, $target.Url)
+    } else {
+      Write-Host ("{0,-10} WAIT {1}" -f $target.Name, $target.Url)
+    }
   }
 }
 
