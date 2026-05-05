@@ -126,14 +126,9 @@ if ($groups.SecurityGroups -and $groups.SecurityGroups.Count -gt 0) {
 
 80, 3000, 8080, 9000, 9090 | ForEach-Object { Allow-Port -SecurityGroupId $securityGroupId -Port $_ }
 
-try {
-  $amiParam = Invoke-AwsJson @("ssm", "get-parameter", "--region", $AwsRegion, "--name", "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64", "--output", "json")
-  $amiId = $amiParam.Parameter.Value
-} catch {
-  $amiId = (& $Aws ec2 describe-images --region $AwsRegion --owners amazon --filters "Name=name,Values=al2023-ami-2023*-x86_64" "Name=architecture,Values=x86_64" "Name=state,Values=available" --query "sort_by(Images,&CreationDate)[-1].ImageId" --output text)
-  if ($LASTEXITCODE -ne 0 -or -not $amiId -or $amiId -eq "None") {
-    throw "Could not resolve an Amazon Linux 2023 AMI."
-  }
+$amiId = (& $Aws ec2 describe-images --region $AwsRegion --owners amazon --filters "Name=name,Values=al2023-ami-2023*-x86_64" "Name=architecture,Values=x86_64" "Name=state,Values=available" --query "sort_by(Images,&CreationDate)[-1].ImageId" --output text)
+if ($LASTEXITCODE -ne 0 -or -not $amiId -or $amiId -eq "None") {
+  throw "Could not resolve an Amazon Linux 2023 AMI."
 }
 
 if (-not $usesEcrImage) {
