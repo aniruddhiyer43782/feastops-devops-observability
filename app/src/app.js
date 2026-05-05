@@ -48,6 +48,17 @@ register.registerMetric(orderStatusChanges);
 const deliveryStatuses = ["accepted", "preparing", "picked_up", "out_for_delivery", "delivered"];
 const riders = ["Aman", "Priya", "Rafiq", "Neha", "Sagar"];
 
+function getPublicUrl(pathOrUrl, fallbackBase) {
+  if (pathOrUrl && /^https?:\/\//.test(pathOrUrl)) {
+    return pathOrUrl;
+  }
+
+  const base = fallbackBase || process.env.PUBLIC_BASE_URL || process.env.PUBLIC_APP_URL || "http://localhost:3100";
+  const pathValue = pathOrUrl || "";
+
+  return `${base.replace(/\/$/, "")}/${pathValue.replace(/^\//, "")}`;
+}
+
 const orders = [
   {
     id: "FD-24001",
@@ -431,6 +442,15 @@ function createApp() {
   });
 
   app.get("/api/devops/status", (_req, res) => {
+    const appUrl = process.env.PUBLIC_APP_URL || getPublicUrl("");
+    const jenkinsUrl = process.env.PUBLIC_JENKINS_URL || getPublicUrl("/job/feastops-local-ci/", process.env.PUBLIC_JENKINS_BASE_URL || "http://localhost:8081");
+    const sonarUrl = process.env.PUBLIC_SONAR_URL || getPublicUrl("/dashboard?id=feastops-food-delivery-api", process.env.PUBLIC_SONAR_BASE_URL || "http://localhost:9001");
+    const prometheusBaseUrl = process.env.PUBLIC_PROMETHEUS_BASE_URL || "http://localhost:9091";
+    const grafanaUrl = process.env.PUBLIC_GRAFANA_URL || getPublicUrl(
+      "/d/feastops-food-delivery-observability/feastops-food-delivery-observability",
+      process.env.PUBLIC_GRAFANA_BASE_URL || "http://localhost:3001"
+    );
+
     res.json({
       app: {
         status: "healthy",
@@ -442,25 +462,25 @@ function createApp() {
         namespace: process.env.K8S_NAMESPACE || "local",
         podName: process.env.POD_NAME || os.hostname(),
         replicas: process.env.APP_REPLICAS || "1",
-        serviceUrl: process.env.PUBLIC_APP_URL || "http://localhost:3100"
+        serviceUrl: appUrl
       },
       ci: {
         provider: "Jenkins",
         job: "feastops-local-ci",
-        url: "http://localhost:8081/job/feastops-local-ci/"
+        url: jenkinsUrl
       },
       quality: {
         provider: "SonarQube",
         projectKey: "feastops-food-delivery-api",
-        url: "http://localhost:9001/dashboard?id=feastops-food-delivery-api"
+        url: sonarUrl
       },
       observability: {
-        prometheus: "http://localhost:9091",
-        prometheusTargets: "http://localhost:9091/targets",
-        prometheusAlerts: "http://localhost:9091/alerts",
+        prometheus: prometheusBaseUrl,
+        prometheusTargets: getPublicUrl("/targets", prometheusBaseUrl),
+        prometheusAlerts: getPublicUrl("/alerts", prometheusBaseUrl),
         prometheusJob: "devops-app",
         scrapeInterval: "15s",
-        grafana: "http://localhost:3001/d/feastops-food-delivery-observability/feastops-food-delivery-observability"
+        grafana: grafanaUrl
       }
     });
   });

@@ -327,10 +327,10 @@
     <nav>
       <a href="/api/catalog">API</a>
       <a href="/metrics">Metrics</a>
-      <a class="secondary" href="http://localhost:9091/targets">Prometheus</a>
-      <a class="secondary" href="http://localhost:3001/d/feastops-food-delivery-observability/feastops-food-delivery-observability">Grafana</a>
-      <a class="secondary" href="http://localhost:8081/job/feastops-local-ci/">Jenkins</a>
-      <a class="secondary" href="http://localhost:9001/dashboard?id=feastops-food-delivery-api">SonarQube</a>
+      <a id="prometheusNav" class="secondary" href="http://localhost:9091/targets">Prometheus</a>
+      <a id="grafanaNav" class="secondary" href="http://localhost:3001/d/feastops-food-delivery-observability/feastops-food-delivery-observability">Grafana</a>
+      <a id="jenkinsNav" class="secondary" href="http://localhost:8081/job/feastops-local-ci/">Jenkins</a>
+      <a id="sonarNav" class="secondary" href="http://localhost:9001/dashboard?id=feastops-food-delivery-api">SonarQube</a>
     </nav>
   </header>
 
@@ -607,6 +607,11 @@
     }
 
     function renderDevOpsEvidence(data) {
+      document.querySelector("#prometheusNav").href = data.observability.prometheusTargets;
+      document.querySelector("#grafanaNav").href = data.observability.grafana;
+      document.querySelector("#jenkinsNav").href = data.ci.url;
+      document.querySelector("#sonarNav").href = data.quality.url;
+
       document.querySelector("#devopsEvidence").innerHTML = `
         <div class="devops-card"><strong>Deployment</strong><div class="muted">${data.deployment.target} - ${data.deployment.namespace} - pod ${data.deployment.podName}</div><a href="${data.deployment.serviceUrl}">Open app service</a></div>
         <div class="devops-card"><strong>CI/CD</strong><div class="muted">${data.ci.provider} job: ${data.ci.job}</div><a href="${data.ci.url}">Open Jenkins</a></div>
