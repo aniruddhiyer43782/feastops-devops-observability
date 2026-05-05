@@ -2,7 +2,7 @@
 
 FeastOps is a Mumbai-focused Swiggy/Zomato-style food delivery demo built as a practical DevOps portfolio project.
 
-It demonstrates a full local DevOps flow:
+It demonstrates a full local DevOps flow as follows:
 
 - Docker Compose runs the complete environment
 - The application is packaged as one reusable Docker image
@@ -15,7 +15,6 @@ It demonstrates a full local DevOps flow:
 - Grafana visualizes those metrics
 
 ## What The Project Does
-##intro
 
 The app models a Mumbai food delivery platform:
 
