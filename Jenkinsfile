@@ -86,7 +86,7 @@ pipeline {
           withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
             sh '''
               rm -rf "$SONAR_WORK_DIR"
-              npx sonar \
+              npx sonar-scanner \
                 -Dsonar.host.url=$SONAR_HOST_URL \
                 -Dsonar.token=$SONAR_TOKEN \
                 -Dsonar.working.directory=$SONAR_WORK_DIR

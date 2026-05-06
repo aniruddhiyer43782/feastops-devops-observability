@@ -86,7 +86,7 @@ It runs:
 3. Production dependency audit with `npm audit --omit=dev --audit-level=high`
 4. `npm test -- --coverage --forceExit`
 5. Application smoke test against `http://app:3000/health`
-6. `npx sonar` against SonarQube
+6. `npx sonar-scanner` against SonarQube
 7. SonarQube Quality Gate check
 8. `docker build -t feastops-food-delivery-api:jenkins app`
 9. Docker image smoke test against the freshly built image
