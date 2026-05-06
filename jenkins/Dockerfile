@@ -28,4 +28,6 @@ RUN jenkins-plugin-cli --plugins \
   credentials-binding \
   docker-workflow
 
+COPY init.groovy.d/ /var/jenkins_home/init.groovy.d/
+
 USER jenkins

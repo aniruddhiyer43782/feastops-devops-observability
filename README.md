@@ -7,7 +7,7 @@ It demonstrates a full local DevOps flow as follows:
 - Docker Compose runs the complete environment
 - The application is packaged as one reusable Docker image
 - The application image can be pushed to Docker Hub, GHCR, ECR, or another registry
-- GitHub Actions validates the app and publishes the app image to GHCR
+- GitHub Actions validates the app and publishes the app and Jenkins images to GHCR
 - Jenkins automates CI stages
 - Jest generates test coverage
 - SonarQube analyzes real JavaScript code and imports coverage
@@ -30,17 +30,32 @@ The app models a Mumbai food delivery platform:
 ## Architecture
 
 ```mermaid
-flowchart LR
-    User["User"] --> App["FeastOps Mumbai Web UI + API"]
-    App --> Catalog["Mumbai Catalog + Recommendations"]
-    App --> Metrics["/metrics endpoint"]
-    Prometheus["Prometheus"] --> Metrics
-    Grafana["Grafana Dashboard"] --> Prometheus
-    Jenkins["Jenkins Pipeline"] --> Tests["Lint + Jest + Coverage"]
-    Jenkins --> Sonar["SonarQube JS Analysis"]
-    Jenkins --> Image["Docker Image Build"]
-    Tests --> Sonar
+flowchart TD
+    User["User / Browser / Mobile"] --> Compose["Docker Compose DevOps Stack"]
+
+    Compose --> App["FeastOps App Container"]
+    Compose --> Jenkins["Jenkins CI/CD Container"]
+    Compose --> Sonar["SonarQube Container"]
+    Compose --> SonarDB["PostgreSQL Container for SonarQube"]
+    Compose --> Prometheus["Prometheus Container"]
+    Compose --> Grafana["Grafana Container"]
+
+    App --> Frontend["Frontend: HTML + CSS + JavaScript"]
+    App --> Backend["Backend: Node.js + Express REST API"]
+    Backend --> Catalog["In-app Mumbai restaurant/order demo data"]
+    Backend --> Metrics["/metrics endpoint"]
+    Backend --> Health["/health endpoint"]
+
+    Jenkins --> GitHub["GitHub Repository"]
+    Jenkins --> Tests["Lint + Jest + Coverage"]
+    Jenkins --> Sonar
+    Jenkins --> GHCR["GHCR Registry"]
+    Prometheus --> Metrics
+    Grafana --> Prometheus
+    Sonar --> SonarDB
 ```
+
+The FeastOps application has a frontend and backend. It does not currently use a separate application database; the separate PostgreSQL service belongs to SonarQube as DevOps infrastructure.
 
 ## Services
 
@@ -268,14 +283,50 @@ Docker Compose, Jenkins, Docker Desktop Kubernetes, Minikube, and AWS EKS all us
 
 Do not pack those tools into the app image. A production-style setup keeps the application image small and scalable, then runs platform services separately.
 
+## Full Stack Pull Model
+
+The project also supports a pullable full-stack model through [docker-compose.full-stack.yml](docker-compose.full-stack.yml). This is the correct way to make the whole DevOps platform portable.
+
+It does not create one oversized image. Instead, one Compose file pulls the full set of service images:
+
+- `ghcr.io/aniruddhiyer43782/feastops-food-delivery-api:latest`
+- `ghcr.io/aniruddhiyer43782/feastops-jenkins:latest`
+- `sonarqube:25.12.0.117093-community`
+- `postgres:16-alpine`
+- `prom/prometheus:v2.54.1`
+- `grafana/grafana:11.2.0`
+
+Pull the whole platform image set:
+
+```powershell
+.\scripts\pull-full-stack.cmd
+```
+
+Pull and start the whole platform:
+
+```powershell
+.\scripts\pull-full-stack.cmd -Start
+```
+
+This gives the report-friendly architecture:
+
+```text
+one Compose stack
+ -> multiple registry images
+ -> app + Jenkins + SonarQube + PostgreSQL + Prometheus + Grafana
+```
+
+So the answer is: the full DevOps environment is enclosed as one Compose-defined platform, not as one monolithic Docker image. Pulling the platform through Compose pulls all required tool images together.
+
 ## Registry Publishing
 
 To make the app runnable without the source code, publish the app image to a registry.
 
-This repository includes GitHub Actions that publish the app image to GitHub Container Registry:
+This repository includes GitHub Actions that publish the app image and the custom Jenkins image to GitHub Container Registry:
 
 ```text
 ghcr.io/aniruddhiyer43782/feastops-food-delivery-api:latest
+ghcr.io/aniruddhiyer43782/feastops-jenkins:latest
 ```
 
 After the `Publish App Image` workflow succeeds, anyone with package access can run:
