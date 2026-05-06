@@ -56,9 +56,15 @@ function Invoke-Aws {
 }
 
 function Allow-Port {
-  param([string]$SecurityGroupId, [int]$Port)
+  param([string]$SecurityGroupId, [int]$Port, [string]$Cidr = "0.0.0.0/0", [string]$SourceSecurityGroupId = "")
   try {
-    Invoke-Aws @("ec2", "authorize-security-group-ingress", "--region", $AwsRegion, "--group-id", $SecurityGroupId, "--protocol", "tcp", "--port", "$Port", "--cidr", "0.0.0.0/0")
+    $args = @("ec2", "authorize-security-group-ingress", "--region", $AwsRegion, "--group-id", $SecurityGroupId, "--protocol", "tcp", "--port", "$Port")
+    if ($SourceSecurityGroupId) {
+      $args += @("--source-group", $SourceSecurityGroupId)
+    } else {
+      $args += @("--cidr", $Cidr)
+    }
+    Invoke-Aws $args
   } catch {
     Write-Host "Ingress for port $Port may already exist; continuing."
   }
@@ -79,16 +85,28 @@ if (-not $subnets -or $subnets.Count -lt 2) { throw "At least two default subnet
 $subnetIds = @($subnets | Select-Object -First 3)
 $subnetCsv = $subnetIds -join ","
 
-$sgName = "$Name-public-web"
-$groups = Invoke-AwsJson @("ec2", "describe-security-groups", "--region", $AwsRegion, "--filters", "Name=vpc-id,Values=$vpcId", "Name=group-name,Values=$sgName", "--output", "json")
+$albSgName = "$Name-alb-public"
+$appSgName = "$Name-app-private"
+
+$groups = Invoke-AwsJson @("ec2", "describe-security-groups", "--region", $AwsRegion, "--filters", "Name=vpc-id,Values=$vpcId", "Name=group-name,Values=$albSgName", "--output", "json")
 if ($groups.SecurityGroups -and $groups.SecurityGroups.Count -gt 0) {
-  $securityGroupId = $groups.SecurityGroups[0].GroupId
+  $albSecurityGroupId = $groups.SecurityGroups[0].GroupId
 } else {
-  $createdGroup = Invoke-AwsJson @("ec2", "create-security-group", "--region", $AwsRegion, "--group-name", $sgName, "--description", "FeastOps ASG public web access", "--vpc-id", $vpcId, "--output", "json")
-  $securityGroupId = $createdGroup.GroupId
-  Invoke-Aws @("ec2", "create-tags", "--region", $AwsRegion, "--resources", $securityGroupId, "--tags", "Key=Name,Value=$sgName", "Key=Project,Value=FeastOps")
+  $createdGroup = Invoke-AwsJson @("ec2", "create-security-group", "--region", $AwsRegion, "--group-name", $albSgName, "--description", "FeastOps-public-ALB-access", "--vpc-id", $vpcId, "--output", "json")
+  $albSecurityGroupId = $createdGroup.GroupId
+  Invoke-Aws @("ec2", "create-tags", "--region", $AwsRegion, "--resources", $albSecurityGroupId, "--tags", "Key=Name,Value=$albSgName", "Key=Project,Value=FeastOps")
 }
-Allow-Port -SecurityGroupId $securityGroupId -Port 80
+Allow-Port -SecurityGroupId $albSecurityGroupId -Port 80
+
+$groups = Invoke-AwsJson @("ec2", "describe-security-groups", "--region", $AwsRegion, "--filters", "Name=vpc-id,Values=$vpcId", "Name=group-name,Values=$appSgName", "--output", "json")
+if ($groups.SecurityGroups -and $groups.SecurityGroups.Count -gt 0) {
+  $appSecurityGroupId = $groups.SecurityGroups[0].GroupId
+} else {
+  $createdGroup = Invoke-AwsJson @("ec2", "create-security-group", "--region", $AwsRegion, "--group-name", $appSgName, "--description", "FeastOps-app-instances-behind-ALB", "--vpc-id", $vpcId, "--output", "json")
+  $appSecurityGroupId = $createdGroup.GroupId
+  Invoke-Aws @("ec2", "create-tags", "--region", $AwsRegion, "--resources", $appSecurityGroupId, "--tags", "Key=Name,Value=$appSgName", "Key=Project,Value=FeastOps")
+}
+Allow-Port -SecurityGroupId $appSecurityGroupId -Port 80 -SourceSecurityGroupId $albSecurityGroupId
 
 $amiId = (& $Aws ec2 describe-images --region $AwsRegion --owners amazon --filters "Name=name,Values=al2023-ami-2023*-x86_64" "Name=architecture,Values=x86_64" "Name=state,Values=available" --query "sort_by(Images,&CreationDate)[-1].ImageId" --output text)
 if ($LASTEXITCODE -ne 0 -or -not $amiId -or $amiId -eq "None") { throw "Could not resolve Amazon Linux 2023 AMI." }
@@ -112,6 +130,13 @@ try {
     "--port", "80",
     "--vpc-id", $vpcId,
     "--health-check-path", "/health",
+    "--health-check-protocol", "HTTP",
+    "--health-check-port", "traffic-port",
+    "--health-check-interval-seconds", "15",
+    "--health-check-timeout-seconds", "5",
+    "--healthy-threshold-count", "2",
+    "--unhealthy-threshold-count", "3",
+    "--matcher", "HttpCode=200",
     "--target-type", "instance",
     "--output", "json"
   )).TargetGroups[0].TargetGroupArn
@@ -126,7 +151,7 @@ try {
     "--name", $loadBalancerName,
     "--subnets"
   ) + $subnetIds + @(
-    "--security-groups", $securityGroupId,
+    "--security-groups", $albSecurityGroupId,
     "--scheme", "internet-facing",
     "--type", "application",
     "--output", "json"
@@ -166,7 +191,7 @@ $userDataBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($user
 $launchTemplateData = @{
   ImageId = $amiId
   InstanceType = $InstanceType
-  SecurityGroupIds = @($securityGroupId)
+  SecurityGroupIds = @($appSecurityGroupId)
   UserData = $userDataBase64
   TagSpecifications = @(
     @{
@@ -184,15 +209,31 @@ $launchTemplateData | Set-Content -LiteralPath $launchTemplatePath -Encoding utf
 
 try {
   Invoke-AwsJson @("ec2", "describe-launch-templates", "--region", $AwsRegion, "--launch-template-names", $Name, "--output", "json") | Out-Null
+  Invoke-Aws @("ec2", "create-launch-template-version", "--region", $AwsRegion, "--launch-template-name", $Name, "--launch-template-data", "file://$launchTemplatePath")
+  Invoke-Aws @("ec2", "modify-launch-template", "--region", $AwsRegion, "--launch-template-name", $Name, "--default-version", "`$Latest")
 } catch {
   Invoke-Aws @("ec2", "create-launch-template", "--region", $AwsRegion, "--launch-template-name", $Name, "--launch-template-data", "file://$launchTemplatePath")
 }
 Remove-Item -LiteralPath $launchTemplatePath -Force -ErrorAction SilentlyContinue
 
 try {
-  Invoke-AwsJson @("autoscaling", "describe-auto-scaling-groups", "--region", $AwsRegion, "--auto-scaling-group-names", $Name, "--output", "json") | Out-Null
-  Invoke-Aws @("autoscaling", "update-auto-scaling-group", "--region", $AwsRegion, "--auto-scaling-group-name", $Name, "--min-size", "$MinSize", "--desired-capacity", "$DesiredCapacity", "--max-size", "$MaxSize", "--target-group-arns", $targetGroupArn)
-} catch {
+  $existingAsg = Invoke-AwsJson @("autoscaling", "describe-auto-scaling-groups", "--region", $AwsRegion, "--auto-scaling-group-names", $Name, "--output", "json")
+} catch {}
+
+if ($existingAsg.AutoScalingGroups -and $existingAsg.AutoScalingGroups.Count -gt 0) {
+  Invoke-Aws @(
+    "autoscaling", "update-auto-scaling-group",
+    "--region", $AwsRegion,
+    "--auto-scaling-group-name", $Name,
+    "--launch-template", "LaunchTemplateName=$Name,Version=`$Latest",
+    "--min-size", "$MinSize",
+    "--desired-capacity", "$DesiredCapacity",
+    "--max-size", "$MaxSize",
+    "--health-check-type", "ELB",
+    "--health-check-grace-period", "180",
+    "--target-group-arns", $targetGroupArn
+  )
+} else {
   Invoke-Aws @(
     "autoscaling", "create-auto-scaling-group",
     "--region", $AwsRegion,
@@ -202,6 +243,8 @@ try {
     "--desired-capacity", "$DesiredCapacity",
     "--max-size", "$MaxSize",
     "--vpc-zone-identifier", $subnetCsv,
+    "--health-check-type", "ELB",
+    "--health-check-grace-period", "180",
     "--target-group-arns", $targetGroupArn,
     "--tags", "Key=Name,Value=$Name-node,PropagateAtLaunch=true", "Key=Project,Value=FeastOps,PropagateAtLaunch=true"
   )

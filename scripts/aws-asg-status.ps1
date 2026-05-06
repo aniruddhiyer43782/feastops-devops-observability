@@ -10,7 +10,16 @@ if (-not $Aws -and (Test-Path "C:\Program Files\Amazon\AWSCLIV2\aws.exe")) {
 }
 if (-not $Aws) { throw "aws is not installed or not on PATH." }
 
-$asg = & $Aws autoscaling describe-auto-scaling-groups --region $AwsRegion --auto-scaling-group-names $Name --output json | ConvertFrom-Json
+function Invoke-AwsJson {
+  param([string[]]$Arguments)
+  $output = & $Aws @Arguments 2>&1
+  if ($LASTEXITCODE -ne 0) {
+    throw ($output -join "`n")
+  }
+  return $output | ConvertFrom-Json
+}
+
+$asg = Invoke-AwsJson @("autoscaling", "describe-auto-scaling-groups", "--region", $AwsRegion, "--auto-scaling-group-names", $Name, "--output", "json")
 if (-not $asg.AutoScalingGroups -or $asg.AutoScalingGroups.Count -eq 0) {
   throw "Auto Scaling Group not found: $Name"
 }
@@ -20,13 +29,14 @@ Write-Host "ASG:     $($group.AutoScalingGroupName)"
 Write-Host "Desired: $($group.DesiredCapacity)"
 Write-Host "Min/Max: $($group.MinSize)/$($group.MaxSize)"
 Write-Host "Health:  $($group.HealthCheckType)"
+Write-Host "Grace:   $($group.HealthCheckGracePeriod)s"
 Write-Host ""
 
 $group.Instances | Select-Object InstanceId,LifecycleState,HealthStatus,AvailabilityZone | Format-Table
 
 $targetGroupArn = $group.TargetGroupARNs[0]
 if ($targetGroupArn) {
-  $targetHealth = & $Aws elbv2 describe-target-health --region $AwsRegion --target-group-arn $targetGroupArn --output json | ConvertFrom-Json
+  $targetHealth = Invoke-AwsJson @("elbv2", "describe-target-health", "--region", $AwsRegion, "--target-group-arn", $targetGroupArn, "--output", "json")
   Write-Host ""
   Write-Host "Target health:"
   $targetHealth.TargetHealthDescriptions | ForEach-Object {
@@ -39,10 +49,17 @@ if ($targetGroupArn) {
   } | Format-Table
 }
 
-$lbs = & $Aws elbv2 describe-load-balancers --region $AwsRegion --names "$Name-alb" --output json | ConvertFrom-Json
+$lbs = Invoke-AwsJson @("elbv2", "describe-load-balancers", "--region", $AwsRegion, "--names", "$Name-alb", "--output", "json")
 if ($lbs.LoadBalancers.Count -gt 0) {
   $dns = $lbs.LoadBalancers[0].DNSName
   Write-Host ""
   Write-Host "Public app URL:"
   Write-Host "http://$dns"
+
+  try {
+    $response = Invoke-WebRequest -Uri "http://$dns/health" -UseBasicParsing -TimeoutSec 10
+    Write-Host "Health check: OK $($response.StatusCode)"
+  } catch {
+    Write-Host "Health check: WAIT"
+  }
 }
