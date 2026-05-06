@@ -14,7 +14,7 @@ It demonstrates a full local DevOps flow as follows:
 - Prometheus scrapes application metrics
 - Grafana visualizes those metrics
 
-## What The Project Does
+## About The Project
 
 The app models a Mumbai food delivery platform:
 
