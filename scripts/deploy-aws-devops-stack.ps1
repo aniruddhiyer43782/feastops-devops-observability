@@ -238,14 +238,6 @@ for i in {1..60}; do
   sleep 5
 done
 
-echo "Waiting for SonarQube health"
-for i in {1..90}; do
-  if curl -fsS http://localhost:9000/api/system/status >/dev/null; then
-    break
-  fi
-  sleep 5
-done
-
 echo "Stack status"
 docker compose --env-file .env.aws-devops -f docker-compose.aws-devops.yml ps
 curl -fsS http://localhost/api/devops/status || true
@@ -318,7 +310,7 @@ Write-Host "App:        http://$publicIp"
 Write-Host "Jenkins:    http://$publicIp`:8080"
 Write-Host "Grafana:    http://$publicIp`:3000"
 Write-Host "Prometheus: http://$publicIp`:9090"
-Write-Host "SonarQube:  http://$publicIp`:9000"
+Write-Host "SonarQube:  optional on AWS; local SonarQube remains at http://localhost:9001"
 Write-Host ""
 Write-Host "DNS URLs:"
 Write-Host "App:        http://$publicDns"

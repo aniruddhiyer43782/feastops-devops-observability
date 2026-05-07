@@ -7,6 +7,11 @@ $ErrorActionPreference = "Stop"
 if (Get-Variable PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue) {
   $PSNativeCommandUseErrorActionPreference = $false
 }
+$processPath = [Environment]::GetEnvironmentVariable("Path", "Process")
+$processUpperPath = [Environment]::GetEnvironmentVariable("PATH", "Process")
+if ($processPath -and $processUpperPath) {
+  [Environment]::SetEnvironmentVariable("PATH", $null, "Process")
+}
 
 function Resolve-Tool {
   param([string]$Name, [string[]]$Fallbacks = @())
@@ -64,8 +69,7 @@ $urls = @(
   @{ Name = "App"; Url = "http://$publicIp/health" },
   @{ Name = "Jenkins"; Url = "http://$publicIp`:8080/login" },
   @{ Name = "Grafana"; Url = "http://$publicIp`:3000/api/health" },
-  @{ Name = "Prometheus"; Url = "http://$publicIp`:9090/-/healthy" },
-  @{ Name = "SonarQube"; Url = "http://$publicIp`:9000/api/system/status" }
+  @{ Name = "Prometheus"; Url = "http://$publicIp`:9090/-/healthy" }
 )
 
 foreach ($target in $urls) {
@@ -87,4 +91,4 @@ Write-Host "App:        http://$publicIp"
 Write-Host "Jenkins:    http://$publicIp`:8080"
 Write-Host "Grafana:    http://$publicIp`:3000"
 Write-Host "Prometheus: http://$publicIp`:9090"
-Write-Host "SonarQube:  http://$publicIp`:9000"
+Write-Host "SonarQube:  optional on AWS; local SonarQube remains at http://localhost:9001"

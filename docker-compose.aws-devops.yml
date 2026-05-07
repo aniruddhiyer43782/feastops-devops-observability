@@ -56,6 +56,8 @@ services:
   sonarqube:
     image: sonarqube:25.12.0.117093-community
     container_name: feastops_sonarqube
+    profiles:
+      - sonarqube
     depends_on:
       sonar-db:
         condition: service_healthy
@@ -65,9 +67,6 @@ services:
       SONAR_JDBC_URL: jdbc:postgresql://sonar-db:5432/sonar
       SONAR_JDBC_USERNAME: sonar
       SONAR_JDBC_PASSWORD: sonar
-      SONAR_WEB_JAVAOPTS: -Xms128m -Xmx384m
-      SONAR_CE_JAVAOPTS: -Xms128m -Xmx384m
-      SONAR_SEARCH_JAVAOPTS: -Xms256m -Xmx512m
     volumes:
       - sonarqube_data:/opt/sonarqube/data
       - sonarqube_extensions:/opt/sonarqube/extensions
@@ -85,6 +84,8 @@ services:
   sonar-db:
     image: postgres:16-alpine
     container_name: feastops_sonar_db
+    profiles:
+      - sonarqube
     environment:
       POSTGRES_USER: sonar
       POSTGRES_PASSWORD: sonar
