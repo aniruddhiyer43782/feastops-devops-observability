@@ -6,16 +6,34 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+if (Get-Variable PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue) {
+  $PSNativeCommandUseErrorActionPreference = $true
+}
+
 $ProjectRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
+
+function Invoke-Native {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Command,
+    [Parameter(ValueFromRemainingArguments = $true)]
+    [string[]]$Arguments
+  )
+
+  & $Command @Arguments
+  if ($LASTEXITCODE -ne 0) {
+    throw "$Command $($Arguments -join ' ') failed with exit code $LASTEXITCODE"
+  }
+}
 
 Write-Host "Publishing FeastOps app image"
 Write-Host "============================="
 Write-Host "Local image:    $LocalImage"
 Write-Host "Registry image: $RegistryImage"
 
-docker build -t $LocalImage (Join-Path $ProjectRoot "app")
-docker tag $LocalImage $RegistryImage
-docker push $RegistryImage
+Invoke-Native docker build -t $LocalImage (Join-Path $ProjectRoot "app")
+Invoke-Native docker tag $LocalImage $RegistryImage
+Invoke-Native docker push $RegistryImage
 
 Write-Host ""
 Write-Host "Published: $RegistryImage"

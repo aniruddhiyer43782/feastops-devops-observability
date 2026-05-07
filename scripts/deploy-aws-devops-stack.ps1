@@ -176,7 +176,7 @@ fi
 docker compose version
 sysctl -w vm.max_map_count=262144
 grep -q "vm.max_map_count" /etc/sysctl.conf || echo "vm.max_map_count=262144" >> /etc/sysctl.conf
-fallocate -l 2G /swapfile || true
+fallocate -l 4G /swapfile || true
 chmod 600 /swapfile || true
 mkswap /swapfile || true
 swapon /swapfile || true
@@ -225,6 +225,22 @@ done
 echo "Waiting for Prometheus health"
 for i in {1..60}; do
   if curl -fsS http://localhost:9090/-/healthy; then
+    break
+  fi
+  sleep 5
+done
+
+echo "Waiting for Jenkins health"
+for i in {1..60}; do
+  if curl -fsS http://localhost:8080/login >/dev/null; then
+    break
+  fi
+  sleep 5
+done
+
+echo "Waiting for SonarQube health"
+for i in {1..90}; do
+  if curl -fsS http://localhost:9000/api/system/status >/dev/null; then
     break
   fi
   sleep 5

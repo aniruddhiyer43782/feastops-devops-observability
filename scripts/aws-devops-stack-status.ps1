@@ -4,6 +4,9 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+if (Get-Variable PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue) {
+  $PSNativeCommandUseErrorActionPreference = $false
+}
 
 function Resolve-Tool {
   param([string]$Name, [string[]]$Fallbacks = @())
@@ -19,8 +22,14 @@ $Aws = Resolve-Tool "aws" @("C:\Program Files\Amazon\AWSCLIV2\aws.exe")
 
 function Invoke-AwsJson {
   param([string[]]$Arguments)
-  $output = & $Aws @Arguments 2>&1
-  if ($LASTEXITCODE -ne 0) { throw ($output -join "`n") }
+  $outputPath = Join-Path ([System.IO.Path]::GetTempPath()) "aws-output-$([guid]::NewGuid().ToString('N')).txt"
+  $errorPath = Join-Path ([System.IO.Path]::GetTempPath()) "aws-error-$([guid]::NewGuid().ToString('N')).txt"
+  $process = Start-Process -FilePath $Aws -ArgumentList $Arguments -NoNewWindow -Wait -PassThru -RedirectStandardOutput $outputPath -RedirectStandardError $errorPath
+  $output = if (Test-Path $outputPath) { Get-Content -LiteralPath $outputPath } else { @() }
+  $errorText = if (Test-Path $errorPath) { Get-Content -LiteralPath $errorPath -Raw } else { "" }
+  Remove-Item -LiteralPath $outputPath -Force -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath $errorPath -Force -ErrorAction SilentlyContinue
+  if ($process.ExitCode -ne 0) { throw "$($output -join "`n")`n$errorText" }
   return $output | ConvertFrom-Json
 }
 
@@ -61,7 +70,7 @@ $urls = @(
 
 foreach ($target in $urls) {
   try {
-    $response = Invoke-WebRequest -Uri $target.Url -UseBasicParsing -TimeoutSec 8
+    $response = Invoke-WebRequest -Uri $target.Url -UseBasicParsing -TimeoutSec 20
     Write-Host ("{0,-10} OK   {1}" -f $target.Name, $target.Url)
   } catch {
     if ($_.Exception.Response -and $_.Exception.Response.StatusCode.value__ -eq 403) {
